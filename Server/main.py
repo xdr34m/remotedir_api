@@ -8,6 +8,7 @@ import logging
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import signal
+import glob
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -16,9 +17,12 @@ app = FastAPI()
 
 # Directory to monitor
 directory_to_watch = '../testserverpath'
-
+#some vars
+default_file='default.alloy'
+rpm_pattern='alloy*.rpm'
 # Dictionary to hold file versions for each host
 file_versions = {}
+rpm_version='XXX' # should i really check for higher versions? or just set a marker that the host hast to upgrade on next check - with a specific rpm
 
 class FileData(BaseModel):
     hostname: str
@@ -64,6 +68,8 @@ def update_file_versions():
                 if os.path.isfile(filepath):
                     current_versions[filename] = os.path.getmtime(filepath)
             file_versions[hostname] = current_versions
+        else:
+            0
 
     # Print the contents of file_versions for debugging
     print("Current file_versions:")
@@ -105,11 +111,11 @@ async def check_updates(file_data: FileData):
         raise HTTPException(status_code=404, detail='file_data.hostname not found')
 
     remote_files = file_versions[file_data.hostname]
-    updates = {filename: remote_files[filename] for filename in remote_files if filename not in file_data.files or remote_files[filename] > file_data.files[filename]}
+    updates = {'files':{filename: remote_files[filename] for filename in remote_files if filename not in file_data.files or remote_files[filename] > file_data.files[filename]},'alloy':'XXXX'}
 
     return updates
 
-@app.get('/download/{hostname}/{filename}')
+@app.get('/download/configs/{hostname}/{filename}')
 async def download_file(hostname: str, filename: str):
     filepath = os.path.join(directory_to_watch, hostname, filename)
 
@@ -117,6 +123,27 @@ async def download_file(hostname: str, filename: str):
         raise HTTPException(status_code=404, detail='File not found')
 
     return FileResponse(filepath)
+
+@app.get('/download/default')
+async def download_default():
+    filepath = os.path.join(directory_to_watch, default_file)
+
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail='File not found')
+
+    return FileResponse(filepath)
+
+@app.get('/download/alloy_rpm')
+async def download_rpm():
+    filepattern = os.path.join(directory_to_watch, rpm_pattern)
+    files = glob.glob(filepattern)
+
+    if len(files) == 0:
+        raise HTTPException(status_code=404, detail='File not found')
+    elif len(files) > 1:
+        raise HTTPException(status_code=400, detail='Multiple files found')
+
+    return FileResponse(files[0])
 
 if __name__ == '__main__':
     import uvicorn

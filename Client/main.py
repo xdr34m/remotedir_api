@@ -2,6 +2,7 @@ import requests
 import os
 import time
 import socket
+import argparse
 
 hostname = socket.gethostname()
 # Replace with your server URL
@@ -13,6 +14,13 @@ hostname
 # Local representation of file versions
 local_file_versions = {}
 
+def parseargs():
+    parser = argparse.ArgumentParser(description='A great argparse function example.')
+    parser.add_argument('-rpm','--rpm-self-update',action='store_true',required=False,help='if set, checks for new Versions of Alloy on remote and installs it if nessesary - needs the be able to sudo rpm -U XX')
+    # Parsing arguments
+    args = parser.parse_args()
+    return args
+
 def fetch_server_versions():
     try:
         response = requests.post(f'{SERVER_URL}/check_updates', json={'hostname': hostname, 'files': local_file_versions})
@@ -20,6 +28,15 @@ def fetch_server_versions():
         return response.json()
     except requests.exceptions.RequestException as e:
         print(f"Error fetching server versions: {e}")
+        return {}
+    
+def fetch_server_rpmversions():
+    try:
+        response = requests.post(f'{SERVER_URL}/download/alloy_rpm')
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching server rpmversions: {e}")
         return {}
 
 def delete_local_file(filename):
@@ -50,7 +67,6 @@ def download_file(filename:str,mtime):
 
 def check_for_updates():
     print("Checking for Updates...")
-    start_time=time.time()
     server_updates = fetch_server_versions()
     #print("server_files:",server_updates)
     # Check local files
@@ -94,15 +110,24 @@ def check_for_updates():
     else:
         return "Updates"
 
+def check_for_rpmupdates():
+    print("Checking for Updates RPM...")
+    server_updates = fetch_server_rpmversions()
 
-def main():
+def main(checkrpm:bool):
     while True:
         start_time=time.time()
         updates=check_for_updates()
+        if checkrpm:
+            rpmupdates=check_for_rpmupdates()
         end_time=time.time()
         elapsed_time = end_time - start_time
         print(updates, "elapsed time:", elapsed_time)
         time.sleep(5)  # Check for updates every minute (adjust interval as needed)
 
 if __name__ == '__main__':
-    main()
+    args=parseargs()
+    if args['rpm-self-update']:
+        main(True)
+    else:
+        main(False)
